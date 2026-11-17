@@ -1,0 +1,82 @@
+version: "3.9"
+services:
+  track-service:
+    build: ./services/track_service
+    container_name: track-service
+    ports:
+      - "8001:8001"
+    volumes:
+      - track-data:/data
+    environment:
+      - DB_PATH=/data/tracks.db
+    networks:
+      - music-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  listener-service:
+    build: ./services/listener_service
+    container_name: listener-service
+    ports:
+      - "8002:8002"
+    volumes:
+      - listener-data:/data
+    environment:
+      - DB_PATH=/data/listeners.db
+    networks:
+      - music-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health')"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  stream-service:
+    build: ./services/stream_service
+    container_name: stream-service
+    ports:
+      - "8003:8003"
+    volumes:
+      - stream-data:/data
+    environment:
+      - DB_PATH=/data/streams.db
+      - TRACK_SERVICE_URL=http://track-service:8001
+      - LISTENER_SERVICE_URL=http://listener-service:8002
+    networks:
+      - music-net
+    depends_on:
+      track-service:
+        condition: service_healthy
+      listener-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health')"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: music-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - TRACK_SERVICE_URL=http://track-service:8001
+      - LISTENER_SERVICE_URL=http://listener-service:8002
+      - STREAM_SERVICE_URL=http://stream-service:8003
+    networks:
+      - music-net
+    depends_on:
+      stream-service:
+        condition: service_healthy
+
+networks:
+  music-net:
+
+volumes:
+  track-data:
+  listener-data:
+  stream-data:
